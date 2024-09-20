@@ -1,0 +1,56 @@
+name: Release to ghcr
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4.3.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      # Store the version, stripping any v-prefix
+      - name: Write release version
+        id: extract-version
+        run: |
+          TAG=${{ github.ref_name }}
+          echo "::set-output name=version::${TAG#v}"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4.0.0
+        with:
+          file: ./files/docker/Dockerfile
+          context: ./files/docker
+          push: true
+          tags: |
+            ghcr.io/cern-cert/pdnssoc:latest
+            ghcr.io/cern-cert/pdnssoc:${{ steps.extract-version.outputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GO_DNSCOLLECTOR_VERSION=0.36.0
+            PDNSSOC_CLI_VERSION=0.0.2
+            PDNSSOC_CLI_PYPI_INDEX=pypi.org
